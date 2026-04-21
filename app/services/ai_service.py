@@ -1,6 +1,7 @@
 from openai import AsyncOpenAI
 from app.core.config import settings
 from app.db.database import get_connection
+from app.services.rag_services import query_documents
 
 
 class AIService:
@@ -23,8 +24,18 @@ class AIService:
         history = cursor.fetchall()
         conn.close()
 
+        context_docs = query_documents(message)
+        context_text = "\n".join(context_docs)
+
         messages = [
-            {"role": "system", "content": "You are a helpful AI assistant."}
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful AI assistant. "
+                    "Use the provided context to answer the question.\n\n"
+                    f"Context:\n{context_text}"
+                ),
+            }
         ]
 
         for user_msg, ai_msg in reversed(history):
