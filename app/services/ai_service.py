@@ -1,20 +1,19 @@
+from app.core.config import settings
+
 class AIService:
     def __init__(self):
-        self.system_name = "Kings AI Service"
+        self.system_name = settings.PROJECT_NAME
 
-    def process_message(self, message: str) -> str:
-        """
-        Main service method for handling user messages.
-        Later this can call OpenAI, RAG pipelines, tools, or agents.
-        """
+    async def process_message(self, message: str) -> str:
         cleaned_message = self._clean_message(message)
-        response = self._generate_response(cleaned_message)
+        response = await self._generate_response(cleaned_message)
         return response
 
     def _clean_message(self, message: str) -> str:
         return message.strip()
 
-    def _generate_response(self, message: str) -> str:
+    async def _generate_response(self, message: str) -> str:
+        # simulate async operation
         return f"{self.system_name} received: {message}"
 
 
