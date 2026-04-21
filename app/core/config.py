@@ -7,5 +7,6 @@ class Settings:
     PROJECT_NAME: str = "Kings AI System"
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ENV: str = os.getenv("ENV", "development")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 settings = Settings()
