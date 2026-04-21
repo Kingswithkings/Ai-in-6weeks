@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from app.api.routes import router
+from app.db.database import init_db
 
-app = FastAPI(
-    title="AI System",
-    description="Clean AI system architecture with FastAPI",
-    version="1.0.0"
-)
+app = FastAPI()
+
+@app.on_event("startup")
+def startup():
+    init_db()
 
 app.include_router(router)
 

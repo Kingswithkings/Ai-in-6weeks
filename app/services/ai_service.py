@@ -1,45 +1,55 @@
 from openai import AsyncOpenAI
 from app.core.config import settings
+from app.db.database import get_connection
 
 
 class AIService:
     def __init__(self):
-        self.system_name = settings.PROJECT_NAME
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.OPENAI_MODEL
 
     async def process_message(self, message: str) -> str:
-        cleaned_message = self._clean_message(message)
-        response = await self._generate_response(cleaned_message)
+        response = await self._generate_response(message)
+        self._save_to_db(message, response)
         return response
 
-    def _clean_message(self, message: str) -> str:
-        return message.strip()
-
     async def _generate_response(self, message: str) -> str:
-        if not settings.OPENAI_API_KEY:
-            return "OpenAI API key is missing. Add it to your .env file."
+        conn = get_connection()
+        cursor = conn.cursor()
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a helpful AI assistant for Kings. "
-                            "Give clear, concise, and useful responses."
-                        ),
-                    },
-                    {"role": "user", "content": message},
-                ],
-                temperature=0.7,
-            )
+        cursor.execute(
+            "SELECT user_message, ai_response FROM messages ORDER BY id DESC LIMIT 5"
+        )
+        history = cursor.fetchall()
+        conn.close()
 
-            return response.choices[0].message.content.strip()
+        messages = [
+            {"role": "system", "content": "You are a helpful AI assistant."}
+        ]
 
-        except Exception as e:
-            return f"Error while calling OpenAI: {str(e)}"
+        for user_msg, ai_msg in reversed(history):
+            messages.append({"role": "user", "content": user_msg})
+            messages.append({"role": "assistant", "content": ai_msg})
+
+        messages.append({"role": "user", "content": message})
+
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+        )
+        return response.choices[0].message.content.strip()
+
+    def _save_to_db(self, user_message: str, ai_response: str):
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "INSERT INTO messages (user_message, ai_response) VALUES (?, ?)",
+            (user_message, ai_response),
+        )
+
+        conn.commit()
+        conn.close()
 
 
 ai_service = AIService()
