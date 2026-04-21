@@ -3,7 +3,7 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.db.database import get_connection
 from app.services.rag_service import query_documents
-from app.services.tools import get_current_time, simple_calculator
+from app.services.tools import get_current_time, safe_calculator
 
 
 class AIService:
@@ -12,13 +12,17 @@ class AIService:
         self.model = settings.OPENAI_MODEL
 
     async def process_message(self, message: str) -> str:
-        tool = self._detect_tool(message)
+        tools = self._detect_tools(message)
+        results: list[str] = []
 
-        if tool == "time":
-            return get_current_time()
+        for tool in tools:
+            if tool == "time":
+                results.append(f"Time: {get_current_time()}")
+            elif tool == "calculator":
+                results.append(f"Calculation: {safe_calculator(message)}")
 
-        if tool == "calculator":
-            return simple_calculator(message)
+        if results:
+            return " | ".join(results)
 
         response = await self._generate_response(message)
         self._save_to_db(message, response)
@@ -63,25 +67,27 @@ class AIService:
         content = response.choices[0].message.content
         return content.strip() if content else ""
 
-    def _save_to_db(self, user_message: str, ai_response: str):
+    def _save_to_db(self, user_message: str, ai_response: str) -> None:
         conn = get_connection()
         cursor = conn.cursor()
-
         cursor.execute(
             "INSERT INTO messages (user_message, ai_response) VALUES (?, ?)",
             (user_message, ai_response),
         )
-
         conn.commit()
         conn.close()
 
-    def _detect_tool(self, message: str) -> str | None:
+    def _detect_tools(self, message: str) -> list[str]:
+        tools: list[str] = []
         lowered = message.lower()
+
         if "time" in lowered:
-            return "time"
+            tools.append("time")
+
         if any(operator in message for operator in ["+", "-", "*", "/"]):
-            return "calculator"
-        return None
+            tools.append("calculator")
+
+        return tools
 
 
 ai_service = AIService()
