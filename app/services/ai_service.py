@@ -13,7 +13,7 @@ class AIService:
         self.model = settings.OPENAI_MODEL
 
     async def process_message(self, message: str):
-        steps = agent_service.plan(message)
+        steps = await agent_service.plan(message)
 
         if steps:
             tool_results = agent_service.execute(steps, message)
