@@ -3,7 +3,8 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.db.database import get_connection
 from app.services.rag_service import query_documents
-from app.services.tools import extract_expression, get_current_time, safe_calculator
+from app.services.tools import extract_expression
+from app.services.agent_service import agent_service
 
 
 class AIService:
@@ -11,25 +12,25 @@ class AIService:
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.OPENAI_MODEL
 
-    async def process_message(self, message: str) -> str:
-        tools = self._detect_tools(message)
-        results: list[str] = []
+    async def process_message(self, message: str):
+        steps = agent_service.plan(message)
 
-        for tool in tools:
-            if tool == "time":
-                results.append(f"Time: {get_current_time()}")
-            elif tool == "calculator":
-                expression = extract_expression(message)
-                if expression:
-                    calc_result = safe_calculator(expression)
-                    results.append(f"Calculation: {calc_result}")
+        if steps:
+            tool_results = agent_service.execute(steps, message)
+            reply = agent_service.format_response(tool_results)
 
-        if results:
-            return " | ".join(results)
+            return {
+                "reply": reply,
+                "tools_used": tool_results,
+            }
 
         response = await self._generate_response(message)
         self._save_to_db(message, response)
-        return response
+
+        return {
+            "reply": response,
+            "tools_used": None,
+        }
 
     async def _generate_response(self, message: str) -> str:
         conn = get_connection()

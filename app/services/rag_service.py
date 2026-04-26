@@ -1,16 +1,32 @@
-import chromadb
-from sentence_transformers import SentenceTransformer
+from __future__ import annotations
+
+try:
+    import chromadb
+except ModuleNotFoundError:
+    chromadb = None
+
+try:
+    from sentence_transformers import SentenceTransformer
+except ModuleNotFoundError:
+    SentenceTransformer = None
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
-client = chromadb.Client()
-collection = client.get_or_create_collection(name="knowledge_base")
+client = chromadb.Client() if chromadb is not None else None
+collection = (
+    client.get_or_create_collection(name="knowledge_base")
+    if client is not None
+    else None
+)
 _embedding_model: SentenceTransformer | None = None
 _sample_data_loaded = False
 
 
 def _get_embedding_model() -> SentenceTransformer | None:
     global _embedding_model
+
+    if SentenceTransformer is None:
+        return None
 
     if _embedding_model is not None:
         return _embedding_model
@@ -24,6 +40,9 @@ def _get_embedding_model() -> SentenceTransformer | None:
 
 
 def add_documents(docs: list[str]) -> None:
+    if collection is None:
+        return
+
     model = _get_embedding_model()
     if model is None:
         return
@@ -39,6 +58,9 @@ def add_documents(docs: list[str]) -> None:
 
 
 def query_documents(query: str, top_k: int = 3) -> list[str]:
+    if collection is None:
+        return []
+
     model = _get_embedding_model()
     if model is None:
         return []
@@ -58,6 +80,10 @@ def query_documents(query: str, top_k: int = 3) -> list[str]:
 
 def load_sample_data() -> None:
     global _sample_data_loaded
+
+    if collection is None:
+        _sample_data_loaded = True
+        return
 
     if _sample_data_loaded or collection.count() > 0:
         _sample_data_loaded = True
