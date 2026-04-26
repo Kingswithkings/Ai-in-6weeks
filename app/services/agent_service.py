@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from openai import AsyncOpenAI
 
@@ -8,7 +8,8 @@ from app.core.config import settings
 from app.services.tools import extract_expression, get_current_time, safe_calculator
 
 
-ALLOWED_TOOLS = {"time", "calculator"}
+ALLOWED_TOOLS: set[str] = {"time", "calculator"}
+ChatMessage = dict[str, str]
 
 PLANNER_PROMPT = """
 You are an AI planner.
@@ -26,6 +27,14 @@ If no tools needed:
 {"tools": []}
 """
 
+REFLECTION_PROMPT = """
+You are an AI assistant.
+
+Use ONLY the provided tool results to answer.
+Do not invent facts.
+Keep the answer concise.
+"""
+
 
 class ToolResult(TypedDict):
     tool: str
@@ -33,6 +42,8 @@ class ToolResult(TypedDict):
 
 
 class AgentService:
+    """Plans tool usage, runs tools, and formats tool-based answers."""
+
     def __init__(self) -> None:
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.OPENAI_MODEL
@@ -51,10 +62,7 @@ class AgentService:
     async def _ask_planner(self, message: str) -> str:
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=[
-                {"role": "system", "content": PLANNER_PROMPT},
-                {"role": "user", "content": message},
-            ],
+            messages=cast(Any, self._build_messages(PLANNER_PROMPT, message)),
             temperature=0,
         )
 
@@ -65,7 +73,11 @@ class AgentService:
         if not json_match:
             return []
 
-        data: Any = json.loads(json_match.group())
+        try:
+            data: Any = json.loads(json_match.group())
+        except json.JSONDecodeError:
+            return []
+
         if not isinstance(data, dict):
             return []
 
@@ -116,6 +128,40 @@ class AgentService:
             "tool": "calculator",
             "result": result,
         }
+
+    async def reflect_and_answer(
+        self,
+        message: str,
+        tool_results: list[ToolResult],
+    ) -> str:
+        if not tool_results:
+            return ""
+
+        user_content = (
+            f"User message: {message}\n\n"
+            f"Tool results: {tool_results}"
+        )
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=cast(
+                    Any,
+                    self._build_messages(REFLECTION_PROMPT, user_content),
+                ),
+                temperature=0,
+            )
+        except Exception:
+            return self.format_response(tool_results)
+
+        content = response.choices[0].message.content
+        return content.strip() if content else self.format_response(tool_results)
+
+    def _build_messages(self, system_prompt: str, user_content: str) -> list[ChatMessage]:
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
 
     def format_response(self, tool_results: list[ToolResult]) -> str:
         response_parts: list[str] = []
