@@ -3,7 +3,7 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.db.database import get_connection
 from app.services.rag_service import query_documents
-from app.services.tools import get_current_time, safe_calculator
+from app.services.tools import extract_expression, get_current_time, safe_calculator
 
 
 class AIService:
@@ -19,7 +19,10 @@ class AIService:
             if tool == "time":
                 results.append(f"Time: {get_current_time()}")
             elif tool == "calculator":
-                results.append(f"Calculation: {safe_calculator(message)}")
+                expression = extract_expression(message)
+                if expression:
+                    calc_result = safe_calculator(expression)
+                    results.append(f"Calculation: {calc_result}")
 
         if results:
             return " | ".join(results)
@@ -84,7 +87,7 @@ class AIService:
         if "time" in lowered:
             tools.append("time")
 
-        if any(operator in message for operator in ["+", "-", "*", "/"]):
+        if extract_expression(message):
             tools.append("calculator")
 
         return tools
